@@ -1,0 +1,3 @@
+[submodule "cpp/examples"]
+	path = cpp/examples
+	url = git@github.com:openglredbook/examples.git

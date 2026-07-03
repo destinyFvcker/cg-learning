@@ -9,18 +9,35 @@ project(
   ],
 )
 
-dependencies = [
+cc = meson.get_compiler('c')
+
+glfw_dep = dependency('glfw3', required : true)
+opengl_dep = dependency('opengl', required : true)
+dl_dep = cc.find_library('dl', required : false)
+platform_deps = []
+
+if host_machine.system() == 'darwin'
+  platform_deps += dependency('appleframeworks', modules : 'CoreFoundation')
+endif
+
+redbook_inc = include_directories('include')
+common_deps = [
+  glfw_dep,
+  opengl_dep,
+  dl_dep,
+  platform_deps,
 ]
 
-sources = [
-  'learn_opengl.c',
-]
-
-exe = executable(
-  'learn-opengl',
-  sources,
-  dependencies : dependencies,
-  install : true,
+redbook_common_sources = files(
+  'lib/gl3w.c',
+  'lib/LoadShaders.cpp',
 )
 
-test('basic', exe)
+executable(
+  '01-triangles',
+  files('src/01-triangles/01-triangles.cpp'),
+  redbook_common_sources,
+  include_directories : redbook_inc,
+  dependencies : common_deps,
+  install : false,
+)
