@@ -12,12 +12,14 @@ project(
 cc = meson.get_compiler('c')
 
 glfw_dep = dependency('glfw3', required : true)
-opengl_dep = dependency('opengl', required : true)
+opengl_dep = dependency('opengl', modules: ['OpenGL::GL', 'OpenGL::GLU'])
 dl_dep = cc.find_library('dl', required : false)
 platform_deps = []
 
 if host_machine.system() == 'darwin'
   platform_deps += dependency('appleframeworks', modules : 'CoreFoundation')
+elif host_machine.system() == 'windows'
+  platform_deps += cc.find_library('opengl32', required : true)
 endif
 
 redbook_inc = include_directories('include')

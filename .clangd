@@ -1,0 +1,5 @@
+CompileFlags:
+    CompilationDatabase: cpp/build
+    Add:
+      - --target=x86_64-w64-windows-gnu
+    Compiler: C:/msys64/ucrt64/bin/c++.exe
