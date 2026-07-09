@@ -1,21 +1,23 @@
 {
-  "clangd.path": "C:/msys64/ucrt64/bin/clangd.exe",
-  "clangd.arguments": [
-    "--background-index",
-    "--clang-tidy",
-    "--header-insertion=never",
-    "--completion-style=detailed",
-    "--pretty",
-    "--query-driver=C:/msys64/ucrt64/bin/*"
-  ],
-  "C_Cpp.intelliSenseEngine": "disabled",
-  "cmake.ignoreCMakeListsMissing": true,
-  "[c]": {
-    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-    "editor.formatOnSave": true
-  },
-  "[cpp]": {
-    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-    "editor.formatOnSave": true
-  }
+	"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+	"clangd.arguments": [
+		"--background-index",
+		"--clang-tidy",
+		"--header-insertion=never",
+		"--completion-style=detailed",
+		"--pretty",
+		"--query-driver=C:/msys64/ucrt64/bin/*"
+	],
+	"C_Cpp.intelliSenseEngine": "disabled",
+	"cmake.ignoreCMakeListsMissing": true,
+	"[c]": {
+		"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+		"editor.formatOnSave": true
+	},
+	"[cpp]": {
+		"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+		"editor.formatOnSave": true
+	},
+	"C_Cpp.default.compileCommands": "/Users/defv/dev/game-dev/cg-dev/projects/opengl-programming-guide-learning/cpp/builddir/compile_commands.json",
+	"C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild"
 }
