@@ -3,6 +3,14 @@ name = "wgpu-intro"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+# 这些 feature 只负责在 WASM 目标中选择教程模块；原生目标始终可以直接编译和运行各个 bin。
+# WASM 构建时通过 `--no-default-features --features <feature>` 明确选择唯一入口。
+default = []
+the-surface = []
+the-window = []
+the-window-ch = []
+
 [dependencies]
 anyhow = { workspace = true }
 winit = { workspace = true }
@@ -10,14 +18,26 @@ env_logger = { workspace = true }
 log = { workspace = true }
 wgpu = { workspace = true }
 pollster = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# 配置 panic! 宏以将错误发送到 javascript 控制台。如果没有这个，当遇到程序崩溃时，你就会对导致崩溃的原因一无所知
 console_error_panic_hook = "0.1.6"
+# 实现了 log API。它将所有日志发送到 javascript 控制台。它还可以配置为仅发送特定级别的日志，这非常适合用于调试
 console_log = "1.0"
 wgpu = { workspace = true, features = ["webgl"] }
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4.30"
+# 是一个包含了许多在 javascript 程序中可用的函数和结构体的工具箱
 web-sys = { version = "0.3", features = ["Document", "Window", "Element"] }
+wasm-bindgen-futures = "0.4.30"
+# 负责生成样板代码，并告诉浏览器如何使用我们的项目。它还允许我们在 Rust 中公开可在 Javascript 中使用的函数，反之亦然。
+wasm-bindgen = "0.2"
 
+# 告诉cargo允许项目构建一个本地的Rust静态库和一个C/C++兼容库。需要rlib在桌面环境之中运行wgpu，并需要cdylib来构建在
+# 浏览器之中运行的WASM
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "the-surface"
+path = "src/bin/the_surface.rs"

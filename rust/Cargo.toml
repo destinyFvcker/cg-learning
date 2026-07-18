@@ -1,5 +1,6 @@
 [workspace]
-members = ["ch01-introduction", "wgpu-intro"]
+members = ["ch01-introduction", "gl-utils", "wgpu-intro"]
+# 从0.10版本开始，wgpu就需要使用Cargo最新的功能解析器，这是2021版本（或者任何使用Rust 1.56.0或更新版本创建的新项目）的默认配置。
 resolver = "3"
 
 [workspace.dependencies]
@@ -12,3 +13,8 @@ env_logger = "0.11.11"
 log = "0.4"
 wgpu = "30.0.0"
 pollster = "0.4.0"
+parking_lot = "0.12.5"
+tracing-web = "0.1.3"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
+tracing-appender = "0.2.5"

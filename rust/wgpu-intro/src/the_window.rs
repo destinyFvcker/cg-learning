@@ -1,8 +1,12 @@
+//! 依赖与窗口，在Rust之中，无论使用什么样的窗口解决方案，都需要实现`raw-window-handle`里面定义的`HasWindowHandle`以及
+//! `HasDisplayHandle`这两个抽象接口。
+
 use std::sync::Arc;
 
 use winit::{
     application::ApplicationHandler,
     event::{KeyEvent, WindowEvent},
+    event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
@@ -10,7 +14,7 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
-use winit::{event_loop::EventLoop, platform::web::EventLoopExtWebSys};
+use winit::platform::web::EventLoopExtWebSys;
 
 pub struct State {
     window: Arc<Window>,
@@ -83,11 +87,26 @@ impl ApplicationHandler<State> for App {
             self.state = Some(pollster::block_on(State::new(window)).unwrap());
         }
 
+        // resumed()
+        //   │
+        //   ├─ 创建 Window
+        //   │
+        //   ├─ 启动异步 State::new(window)
+        //   │       │
+        //   │       └─ 完成后得到 State
+        //   │
+        //   └─ proxy.send_event(State)
+        //           │
+        //           └─ 事件循环调用 user_event(..., State)
+        //                          │
+        //                          └─ self.state = Some(State)
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(proxy) = self.proxy.take() {
+                // 这不是创建一个新线程，只是把这个Future注册到浏览器的异步任务队列之中，让它稍后被执行
                 wasm_bindgen_futures::spawn_local(async move {
                     assert!(
+                        // 这里发送成功之后，winit就会在事件循环之中调用它，也就是`user_event`方法
                         proxy
                             .send_event(
                                 State::new(window)
@@ -138,7 +157,6 @@ impl ApplicationHandler<State> for App {
 
     // user_event函数作为我们State future的着陆点（landing point）,因为resumed不是异步的，所以需要offload future并将
     // 结果发送到某个个地方
-    #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, mut event: State) {
         {
             event.window.request_redraw();
@@ -160,6 +178,19 @@ pub fn run() -> anyhow::Result<()> {
     {
         console_log::init_with_level(log::Level::Info).unwrap_throw();
     }
+
+    // 可以把EventLoop理解为“操作系统事件循环的跨平台适配层”，但它不只是事件流转换器，更准确说是：
+    // EventLoop 是应用主线程上的平台事件泵、窗口生命周期协调器和回调调度器。
+    //
+    // 它主要负责：
+    // 接管/驱动操作系统事件泵，例如 Win32 message loop、macOS NSApplication、Wayland/X11 事件队列。
+    // 把平台事件统一转换为 WindowEvent、DeviceEvent 等 winit 事件。
+    // 按顺序调用 ApplicationHandler 的回调。
+    // 管理应用生命周期，如 resumed、suspended、exiting。
+    // 提供窗口创建所需的平台上下文，即 ActiveEventLoop::create_window()。
+    // 决定线程何时休眠或继续运行，即 ControlFlow::{Wait, Poll, WaitUntil}。
+    // 接收 EventLoopProxy 从其他线程送来的自定义事件。
+    // 协调重绘请求，例如把 Window::request_redraw() 转化为 RedrawRequested。
 
     let event_loop = EventLoop::with_user_event().build()?;
     #[cfg(not(target_arch = "wasm32"))]
