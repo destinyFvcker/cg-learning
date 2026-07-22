@@ -9,7 +9,9 @@ edition = "2024"
 default = []
 the-surface = []
 the-window = []
+the-pipeline = []
 the-window-ch = []
+buffers-and-indices = []
 
 [dependencies]
 anyhow = { workspace = true }

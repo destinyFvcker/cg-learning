@@ -18,6 +18,6 @@
 		"editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
 		"editor.formatOnSave": true
 	},
-	"C_Cpp.default.compileCommands": "/Users/defv/dev/game-dev/cg-dev/projects/opengl-programming-guide-learning/cpp/builddir/compile_commands.json",
+	"C_Cpp.default.compileCommands": "/Users/defv/dev/game-dev/cg-dev/projects/cg-learning/cpp/builddir/compile_commands.json",
 	"C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild"
 }

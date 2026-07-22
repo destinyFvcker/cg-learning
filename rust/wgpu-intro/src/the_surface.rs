@@ -28,7 +28,8 @@ impl State {
     async fn new(window: Arc<Window>) -> anyhow::Result<State> {
         let size = window.inner_size();
 
-        // instance是使用wgpu时创建的第一个对象，其主要用途是创建Adapter和Surface
+        // instance是使用wgpu时创建的第一个对象，提供了若干用于开始访问系统GPU的操作入口。
+        // 其主要用途是创建Adapter和Surface
         // Instance
         //      └─ request_adapter() → Adapter（选择物理 GPU + 图形后端）
         //              └─ request_device() → Device + Queue（逻辑设备）
