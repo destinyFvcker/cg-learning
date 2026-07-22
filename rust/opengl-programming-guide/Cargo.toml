@@ -1,7 +1,6 @@
 [package]
-name = "ch01-introduction"
+name = "opengl-programming-guide"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-winit = { workspace = true }

@@ -1,5 +1,5 @@
 [package]
-name = "gl-utils"
+name = "utils"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,7 +9,11 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.7"
 tracing-web = { workspace = true }
-web-sys = { version = "0.3", features = ["Location", "UrlSearchParams", "Window"] }
+web-sys = { version = "0.3", features = [
+    "Location",
+    "UrlSearchParams",
+    "Window",
+] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 log-panics = "2.1.0"

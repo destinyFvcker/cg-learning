@@ -1,5 +1,5 @@
 [workspace]
-members = ["ch01-introduction", "gl-utils", "wgpu-intro"]
+members = ["utils", "wgpu-intro", "opengl-programming-guide"]
 # 从0.10版本开始，wgpu就需要使用Cargo最新的功能解析器，这是2021版本（或者任何使用Rust 1.56.0或更新版本创建的新项目）的默认配置。
 resolver = "3"
 
