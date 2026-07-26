@@ -1,17 +1,38 @@
-//! 缓冲区（Buffer）是GPU上的一块数据。缓冲区保证是连续的，这意味着所有的数据都将会按照顺序存储在内存之中。
-//! 缓冲区通常用于存储结构体或数组等简单内容，但是也可以存储更加复杂的内容，例如树等图结构（前提是所有节点都存储在一起，
-//! 且不引用缓冲区之外的任何内容）。
-//!
-//! 我们将大量使用缓冲区，所以让我们从最重要的两点开始：顶点缓冲区（Vertex Buffer）和索引缓冲区（Index Buffer）
+//! 从技术上来说，我们并不一定需要索引缓冲区，但是它依旧非常有用。当我们开始使用具有大量三角形的模型的时候，
+//! 索引缓冲区就派上用场了
 
 #![allow(unused)]
 
-// 之前我们直接在顶点着色器之中存储顶点类数据。这虽然在起步阶段运行良好，但是从长远上来看并不可行。
-// 我们需要绘制的对象类型在规模上各不相同，而且，每当需要更新模型时都要重新编译着色器会极大降低程序的运行速度。
+/*
+                          A----
+                        /     --------
+                       /               ---------
+                     /                         --------
+                   /                                   ----B
+                  /                                ------ //|
+                /                          -------     //  |
+               /                     -------           /    |
+             /                ------                //      |
+            /           -------                     /        |
+          /      -------                          //         |
+        / ------                               //           |
+       E---                                    /             |
+         \\                                  //              |
+           \\                              //                |
+             \\                           /                   |
+               \\                       //                    |
+                 \\                   //                      |
+                   \\                /                     ---C
+                     \\            //                ------
+                       \\         /           -------
+                         \\     //     -------
+                           \\ // ------
+                             D---
+*/
 
 use std::sync::Arc;
 
-use wgpu::{VertexBufferLayout, util::DeviceExt};
+use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
     event::{KeyEvent, WindowEvent},
@@ -20,93 +41,122 @@ use winit::{
     window::Window,
 };
 
+/// 对应上面的ASCII图，这里一共需要9个顶点，但是我们实际上画的就只是一个5边形，这就意味着
+/// 有4个顶点被重复使用了。
+///
+/// ## 这里的颜色为什么是 `[0.5, 0.0, 0.5]`
+///
+/// 顶点缓冲区中的浮点颜色会被着色器当作线性 RGB；因此这里的 `0.5` 表示约一半的物理光强，
+/// 而不是取色器中 `128 / 255` 的 sRGB 编码。写入 sRGB Surface 时，GPU 会将线性的 `0.5`
+/// 编码成约 `0.735`，量化为 8 位后约为 `188`，所以取色器读到的颜色接近
+/// `#BC00BC`，即 `(188, 0, 188)`。
+///
+/// sRGB 映射并没有扩展 `[0, 1]` 的范围，也没有创造更多颜色值。对于 8 位通道来说，总数始终
+/// 只有 256 个编码；非线性映射只是重新分配这些有限的刻度：在线性亮度轴上让暗部刻度更密、
+/// 亮部刻度更疏。这能以较多编码描述人眼更敏感的暗部变化，以较少编码描述不易察觉的亮部变化，
+/// 从而让有限的量化精度更符合人眼感知。
+///
+/// 反过来解释取色器数值时，`188 / 255 ≈ 0.737` 只完成了从 `[0, 255]` 到 `[0, 1]`
+/// 的归一化，数值仍在 sRGB 空间；继续进行 sRGB 解码后才得到线性值 `≈ 0.503`，
+/// 与这里的 `0.5` 基本一致，微小差异来自 8 位整数的量化和舍入。
+const VERTICES_NOT_GOOD: &[Vertex] = &[
+    Vertex {
+        position: [-0.0868241, 0.49240386, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // A
+    Vertex {
+        position: [-0.49513406, 0.06958647, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // B
+    Vertex {
+        position: [0.44147372, 0.2347359, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // E
+    Vertex {
+        position: [-0.49513406, 0.06958647, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // B
+    Vertex {
+        position: [-0.21918549, -0.44939706, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // C
+    Vertex {
+        position: [0.44147372, 0.2347359, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // E
+    Vertex {
+        position: [-0.21918549, -0.44939706, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // C
+    Vertex {
+        position: [0.35966998, -0.3473291, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // D
+    Vertex {
+        position: [0.44147372, 0.2347359, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // E
+];
+
+/// 这才是好的做法，通过使用索引缓冲区就能做到
+///
+/// 我们将所有唯一的顶点存储在 VERTICES 中，
+/// 并创建另一个缓冲区来存储指向 VERTICES 中元素的索引，从而创建三角形
+const VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [-0.0868241, 0.49240386, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // A
+    Vertex {
+        position: [-0.49513406, 0.06958647, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // B
+    Vertex {
+        position: [-0.21918549, -0.44939706, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // C
+    Vertex {
+        position: [0.35966998, -0.3473291, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // D
+    Vertex {
+        position: [0.44147372, 0.2347359, 0.0],
+        color: [0.5, 0.0, 0.5],
+    }, // E
+];
+
+const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+
 #[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
-    /// 位置代表顶点在三维空间中的x、y和z坐标
     position: [f32; 3],
-    /// 颜色就是顶点的红绿蓝数值
     color: [f32; 3],
 }
 
 impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+    // vertex_attr_array! 会根据前一个属性的格式自动计算下一个属性的字节偏移：
+    //
+    // @location(0) position: Float32x3 -> offset = 0，大小为 3 * 4 = 12 字节
+    // @location(1) color:    Float32x3 -> offset = 12，大小为 3 * 4 = 12 字节
+    //
+    // 这两个 location 必须与 buffer-indices-shader.wgsl 中 VertexInput 的
+    // @location(0) position 和 @location(1) color 一一对应。
+    const ATTRIBUTES: [wgpu::VertexAttribute; 2] =
         wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
 
-    fn desc() -> VertexBufferLayout<'static> {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
-            // ` array_stride ` 定义了顶点的宽度。当着色器读取下一个顶点时，
-            // 它将跳过 ` array_stride ` 个字节。在我们的案例中，`array_stride` 可能为 24 字节
-            //
-            // 专门设计这个参数，是因为顶点数据可能包含：内存对齐产生的填充字节、当前不提供给着色器的字段
-            // 为方便访问预留的数据、大于属性实际占用范围的步长.
-            //
-            // [position 12B][color 12B][padding 8B]
-            // <--------- array_stride = 32 --------->
-            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            // VertexStepMode::Vertex 每处理一个顶点，缓冲区就前进一个 array_stride
-            // VertexStepMode::Instance GPU 会在开始绘制下一个实例时才推进缓冲区
+            // 一个完整 Vertex 占用的字节数：position 12 字节 + color 12 字节 = 24 字节。
+            // GPU 读取完一个顶点后，会向后移动 array_stride 字节，再读取下一个顶点。
+            array_stride: std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            // 每处理一个新顶点就移动一次，而不是每处理一个新实例才移动一次。
             step_mode: wgpu::VertexStepMode::Vertex,
-            // 顶点属性描述了顶点的各个组成部分--每个顶点包含哪些着色器输入。通常，
-            // 这与结构体的字段是一一对应的，在我们的案例中也是如此
-            attributes: &[
-                wgpu::VertexAttribute {
-                    // 从 offset 指向的位置开始，应当读取多少字节，并如何解释这些字节。
-                    //
-                    // Float32x3 对应着色器代码中的 vec3<f32> 我们可以在一个属性中存储的最大值是
-                    // Float32x4（ Uint32x4 和 Sint32x4 同样适用）。当我们需要存储大于
-                    // Float32x4 的内容时，我们需要记住这一点。
-                    format: wgpu::VertexFormat::Float32x3,
-                    // 相对于当前元素起点，这个属性从第几个字节开始。注意是“相对于当前顶点起点”，不是相对于整个 Buffer 起点。
-                    offset: 0,
-                    // 这会告知着色器将该属性存储在哪个位置。例如，顶点着色器中的 @location(0) x: vec3<f32>
-                    // 将对应于 Vertex 结构体中的 position 字段，而 @location(1) x: vec3<f32> 则对应于
-                    // color 字段。
-                    shader_location: 0,
-                },
-                wgpu::VertexAttribute {
-                    format: wgpu::VertexFormat::Float32x3,
-                    offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                },
-            ],
-        }
-    }
-
-    // 可以使用`wgpu::vertex_attr_array!`宏来简化当前的顶点格式设置操作操作
-    fn desc_macro() -> VertexBufferLayout<'static> {
-        use std::mem;
-
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
+            // 告诉 GPU：这 24 字节应当如何拆成着色器需要的两个输入属性。
+            attributes: &Self::ATTRIBUTES,
         }
     }
 }
-
-/// 构成三角形的实际数据
-///
-/// 我们按照逆时针顺序排列顶点：顶部、左下、右下，这样做部分是出于传统，
-/// 但是主要是因为在render_pipeline之中的primitive之中指定了希望三角形
-/// 的front_face是wgpu::FrontFace::Ccw（Counter-Clockwise，逆时针），
-/// 以便剔除背面。
-///
-/// 这意味着任何面向我们的三角形都应该使其顶点按照逆时针顺序排列
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [0.0, 0.5, 0.0],
-        color: [1.0, 0.0, 0.0],
-    },
-    Vertex {
-        position: [-0.5, -0.5, 0.0],
-        color: [0.0, 1.0, 0.0],
-    },
-    Vertex {
-        position: [0.5, -0.5, 0.0],
-        color: [0.0, 0.0, 1.0],
-    },
-];
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -115,8 +165,9 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
     is_surface_configured: bool,
-    num_vertices: u32,
     window: Arc<Window>,
 }
 
@@ -137,10 +188,8 @@ impl State {
             display: None,
         });
 
-        // 根据 Window / Display 创建 Surface
         let surface = instance.create_surface(Arc::clone(&window)).unwrap();
 
-        // 选择能够向这个 Surface 呈现画面的 GPU
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptionsBase {
                 power_preference: wgpu::PowerPreference::default(),
@@ -165,28 +214,22 @@ impl State {
             })
             .await?;
 
-        // 这里实际上在查询 Surface 和 Adapter 的共同能力
         let surface_cap = surface.get_capabilities(&adapter);
-        let surface_format = surface_cap
-            .formats
-            .iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(surface_cap.formats[0]);
-        // 在上面使用insface创建Surface的时候实际上就只做了一件事：根据操作系统的窗口句柄，
-        // 创建一个可以向该窗口呈现画面的目标
-        //
-        // 但是实际上此时它就只建立起大概这样的关系：Surface -> 操作系统窗口
-        // 现在还不知道:
-        // - 最终使用哪块GPU（Adapter）
-        // - 使用哪个逻辑设备（Device）
-        // - GPU和窗口共同支持哪些纹理格式
-        // - 窗口大小是多少
-        // - 使用垂直同步还是即时呈现
-        // - Surface纹理的用途是什么
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
+            // 优先选择 sRGB Surface 格式。若选择成功，片元着色器仍应输出线性 RGB，
+            // GPU 会在写入 Surface 时自动执行 linear -> sRGB 编码。因此顶点颜色中的
+            // 线性 0.5 最终会以约 0.735（8 位约为 188）的 sRGB 数值保存/显示。
+            //
+            // 注意：下面保留了非 sRGB 格式的回退路径；若实际回退到这种格式，则不会发生
+            // 上述自动 sRGB 编码，不能再按同一条转换链理解最终数值。
+            format: surface_cap
+                .formats
+                .iter()
+                .find(|f| f.is_srgb())
+                .copied()
+                .unwrap_or(surface_cap.formats[0]),
             color_space: wgpu::SurfaceColorSpace::Auto,
             width: size.width,
             height: size.height,
@@ -214,11 +257,6 @@ impl State {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
-                // 列表中的每个条目代表一个可以绑定缓冲区的插槽。使用None表示该插槽应该为空。
-                // 如果你希望将特定的缓冲区放在特定的插槽之中这就会有用
-                //
-                // 对于现在的这个演示，将只使用一个缓冲区。即便如此，我们仍然需要在渲染方法之中实际
-                // 设置顶点缓冲区，否则程序将会崩溃
                 buffers: &[Some(Vertex::desc())],
             },
             primitive: wgpu::PrimitiveState {
@@ -241,12 +279,6 @@ impl State {
                 entry_point: Some("fs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    // 可以在这里注意到实际上`config.format`同时出现在`SurfaceConfiguration`和
-                    // 这里，也就是`ColorTargetState`之中，这两边必须一致，因为一个描述“目标纹理实
-                    // 际是什么格式”，另一个描述“管线认为自己正在向什么格式写”。可以类比为：
-                    //
-                    // Surface：我提供 BGRA8 sRGB 画布
-                    // Pipeline：我将向 BGRA8 sRGB 画布输出
                     format: config.format,
                     blend: Some(wgpu::BlendState::REPLACE),
                     write_mask: wgpu::ColorWrites::ALL,
@@ -262,6 +294,13 @@ impl State {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let num_indices = INDICES.len() as u32;
+
         Ok(Self {
             surface,
             device,
@@ -269,8 +308,9 @@ impl State {
             config,
             render_pipeline,
             vertex_buffer,
+            index_buffer,
+            num_indices,
             is_surface_configured: false,
-            num_vertices: VERTICES.len() as u32,
             window,
         })
     }
@@ -297,10 +337,7 @@ impl State {
         // 当前示例只负责清屏，还没有需要逐帧更新的 CPU 状态
     }
 
-    /// render则是要通过当前的状态绘制一帧
     fn render(&mut self) -> anyhow::Result<()> {
-        // 下面这个调用本身不会绘制，而只是向事件循环申请一次`RedrawRequested`.
-        // 由于现在每次在render之中都会调用一次它，每次完成一帧的时候都会预约下一帧，由此形成连续渲染循环
         self.window.request_redraw();
 
         if !self.is_surface_configured {
@@ -313,71 +350,20 @@ impl State {
         //
         // 内部的Texture才是真正绘制的目标
         let output = match self.surface.get_current_texture() {
-            // 成功获取到一张用于绘制当前帧的纹理。纹理格式、尺寸以及Surface状态都正常，可以直接创建TextureView并进行渲染
             wgpu::CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
-            // 成功拿到了纹理，所以当前这一帧依旧可画；但是当前Surface配置已经不完全匹配底层窗口系统了
-            // - 窗口尺寸发生了变化
-            // - HiDPI缩放比例发生了变化
-            // - 窗口从一个显示器移动到了另外一个显示器
-            // - 底层交换链属性发生变化
-            // - 平台认为当前配置仍然能工作，但已经不是最佳配置
-            // 这个时候应该先渲染，然后重新配置对应的Surface比较好
             wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => surface_texture,
-            // 等待下一张 SurfaceTexture 时超时了，可能的原因包括：
-            // - GPU 暂时太忙；
-            // - 前面的帧还没有执行完；
-            // - 操作系统暂时无法提供新的交换链图像；
-            // - 驱动或窗口系统出现短暂延迟。
-            wgpu::CurrentSurfaceTexture::Timeout => return Ok(()),
-            // 窗口目前不可见或被遮挡，系统没有提供当前帧纹理，典型情况包括：
-            // - 窗口最小化；
-            // - 窗口完全被其他窗口遮挡；
-            // - 窗口当前不在可见桌面；
-            // - 某些平台暂停了不可见窗口的交换链。
-            wgpu::CurrentSurfaceTexture::Occluded => return Ok(()),
-            // Surface 还存在，但之前的 SurfaceConfiguration 已经过期，不能继续使用，常见原因：
-            // - 窗口刚刚调整了大小；
-            // - 平台交换链发生变化；
-            // - 当前配置中的宽高不再匹配窗口；
-            // - 显示环境发生改变。
-            //
-            // - 它与 Suboptimal 的核心区别是：
-            // - Suboptimal：纹理还能用，这一帧可以继续画；
-            // - Outdated：纹理都没有拿到，这一帧画不了。
-            // 一般不需要在同一个 render() 调用里立刻重试。重新配置后结束这一帧，下一次重绘再获取纹理，逻辑会更简单。
+            wgpu::CurrentSurfaceTexture::Timeout
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => return Ok(()),
             wgpu::CurrentSurfaceTexture::Outdated => {
                 self.surface.configure(&self.device, &self.config);
                 return Ok(());
             }
-            // 含义比 Outdated 严重：
-            // Surface 本身已经丢失，单纯重新调用 configure() 不一定能恢复。
-            //
-            // 这里要区分两层资源：
-            // Instance
-            //   └── Surface
-            //         └── 当前交换链纹理
-            // Outdated 通常只是最后一层交换链配置失效；Lost 表示 Surface 与底层窗口表面的连接可能已经失效。
-            // 官方建议是：
-            // 使用 Instance::create_surface() 重新创建 Surface；
-            // 调用 Surface::configure()；
-            // 下一帧重试。
-            //
-            // 而且假如整个gpu device都丢失了，那这里甚至要整个状态全部进行重新构建
             wgpu::CurrentSurfaceTexture::Lost => {
                 anyhow::bail!("Lost device")
             }
-            // get_current_texture() 内部产生了 wgpu 验证错误，并且这个错误被 error scope 或未捕获错误回调捕获了。
-            // 它通常意味着程序的使用方式存在问题，而不是普通的运行时波动，可能原因包括：
-            // - Surface 尚未正确 configure()；
-            // - SurfaceConfiguration 不受支持；
-            // - 配置尺寸不合法；
-            // - 资源生命周期或 API 调用顺序错误；
-            // - 底层状态与程序记录的状态不一致。
-            wgpu::CurrentSurfaceTexture::Validation => return Ok(()),
         };
 
-        // RenderPass 通过 TextureView 写入 Texture
-        // TextureView 表示GPU在本次渲染之中"如何访问这张Texture"的视图
         let view = output
             .texture
             .create_view(&wgpu::wgt::TextureViewDescriptor::default());
@@ -389,13 +375,6 @@ impl State {
             });
 
         {
-            // RenderPass可以理解成：一次针对一组渲染附件（Render Attachments）的绘制阶段
-            // 这里的附件通常包括：
-            // - 一个或多个颜色附件，例如窗口交换链纹理
-            // - 可选的深度附件
-            // - 可选的模板附件
-            //
-            // 1️⃣ 绘制目标
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 // 指定颜色输出目标
@@ -419,15 +398,85 @@ impl State {
                 multiview_mask: None,
             });
 
-            // 2️⃣ 绘制状态
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            // 3️⃣ 绘制命令：我们告诉 wgpu 使用三个顶点和一个实例来绘制内容。
-            // 这就是 @builtin(vertex_index) 的来源
-            render_pass.draw(0..self.num_vertices, 0..1);
+            // 方法名称是 set_index_buffer ，而不是 set_index_buffers 。一次只能设置一个索引缓冲区。
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            // 使用索引缓冲区时，你需要使用 draw_indexed 。draw 方法会忽略索引缓冲区。此外，请确保你使用的是索引数量
+            // （num_indices）而非顶点数量，否则你的模型要么会绘制错误，要么该方法会因为索引不足而 panic 。
+            //
+            // ==================== 先记住这四个基础概念 ====================
+            //
+            // 顶点：形状的点。
+            // 索引：告诉 GPU 如何把点组成三角形。
+            // 网格：由这些顶点和三角形描述出来的整个形状。
+            // 实例：使用同一个形状画出来的其中一份。
+            //
+            // 简单来说：索引负责“这个形状怎么组成”，实例负责“这个形状画几份”。
+            //
+            // ============================================================
+            //
+            // draw_indexed 的三个参数依次是：
+            //
+            // 1. indices: 0..self.num_indices
+            //    指定读取索引缓冲区中的哪些元素。这里的单位是“索引元素”，不是字节；
+            //    Rust 的 Range 不包含右端点，因此会读取编号为
+            //    0、1、...、num_indices - 1 的全部索引。
+            //
+            // 2. base_vertex: 0
+            //    这是加到每个索引值上的“基础顶点偏移”，单位是“顶点/顶点槽位”，也不是字节。
+            //    GPU 从索引缓冲区读出一个索引后，最终访问的顶点编号可理解为：
+            //
+            //        最终顶点编号 = 索引值 + base_vertex
+            //
+            //    例如索引缓冲区中的值为 [0, 1, 2]，base_vertex 为 4 时，实际访问的是
+            //    顶点 4、5、6。至于这些顶点在 vertex_buffer 中相隔多少字节，则由
+            //    VertexBufferLayout::array_stride 决定；例如每个顶点占 24 字节，
+            //    顶点 4 相对于顶点缓冲区开头的字节偏移就是 4 * 24 = 96 字节。
+            //    base_vertex 的类型是 i32，所以也可以为负数，但计算出的最终顶点编号必须有效。
+            //    此处传入 0，表示不修正索引值，索引 0 就访问顶点 0。
+            //
+            //    这个参数常用于把多个网格的顶点连续放在同一个顶点缓冲区中：每个网格的索引
+            //    都可以继续从 0 开始，只需用 base_vertex 指向该网格顶点数据的起始位置。
+            //
+            // 3. instances: 0..1
+            //    指定绘制哪些实例，单位是“实例”，不是字节。0..1 只包含实例编号 0，
+            //    所以这里只绘制一个实例；0..3 则会绘制实例 0、1、2，共三个实例。
+            //    实例编号可以在着色器中通过 @builtin(instance_index) 取得；如果顶点缓冲区
+            //    使用 VertexStepMode::Instance，GPU 也会按照实例而不是按照顶点推进实例数据。
+            //
+            //    实例与索引是两个相互独立的维度：
+            //
+            //        索引：决定一次网格绘制要按照什么顺序使用哪些顶点；
+            //        实例：决定把这一整套索引绘制过程重复多少次。
+            //
+            //    它们不是“一个索引对应一个实例”的关系，而是“每个实例都执行一遍完整的
+            //    indices 范围”。例如使用 6 个索引并绘制 3 个实例：
+            //
+            //        draw_indexed(0..6, 0, 0..3)
+            //
+            //    可以理解为：
+            //
+            //        实例 0：依次处理索引 0..6
+            //        实例 1：依次处理索引 0..6
+            //        实例 2：依次处理索引 0..6
+            //
+            //    因此，顶点着色器的调用次数通常可以理解为：
+            //
+            //        索引数量 * 实例数量
+            //
+            //    上面的例子会产生 6 * 3 = 18 次顶点着色器调用（忽略 GPU 可能进行的缓存
+            //    与内部优化）。每次调用都同时具有一个“索引最终对应的顶点”和一个实例编号。
+            //
+            //    如果各实例没有不同的实例数据或着色器变换，它们会绘制到同一位置，看起来
+            //    完全重叠。实际的实例化绘制通常会根据 instance_index 读取每个实例各自的
+            //    模型矩阵、位置、颜色等数据，让同一个顶点缓冲区和索引缓冲区生成多个外观
+            //    或位置不同的物体。实例范围本身不会改变索引指向的顶点。
+            //
+            // 因此，这次调用的整体含义是：读取全部索引、不添加顶点偏移，并绘制一个实例。
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
         }
 
-        // 结束 render pass 只代表命令已被记录；还需要提交给 GPU，并将这一帧呈现到窗口。
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
 

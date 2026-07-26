@@ -12,6 +12,7 @@ the-window = []
 the-pipeline = []
 the-window-ch = []
 buffers-and-indices = []
+new-to-index-buffer = []
 
 [dependencies]
 anyhow = { workspace = true }
