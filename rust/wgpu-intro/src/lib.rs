@@ -3,6 +3,8 @@
 pub mod buffers_and_indices;
 #[cfg(any(not(target_arch = "wasm32"), feature = "new-to-index-buffer"))]
 pub mod new_to_index_buffer;
+#[cfg(any(not(target_arch = "wasm32"), feature = "textures-and-bind-group"))]
+pub mod textures_and_bind_group;
 #[cfg(any(not(target_arch = "wasm32"), feature = "the-window-ch"))]
 pub mod the_pipeline;
 #[cfg(any(not(target_arch = "wasm32"), feature = "the-surface"))]
