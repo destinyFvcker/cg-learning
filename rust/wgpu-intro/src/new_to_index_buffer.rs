@@ -127,6 +127,13 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 
+// TriangleList 的每组三个索引组成一个三角形；这里把这些三角形的边转换成
+// LineList 所需的成对索引。除了多边形外轮廓，也会显示三角形之间的内部连线。
+const LINE_INDICES: &[u16] = &[
+    0, 1, 1, 2, 2, 3, 3, 4, 4, 0, // 外轮廓
+    1, 4, 2, 4, // 三角形内部连线
+];
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
@@ -164,9 +171,12 @@ pub struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
+    line_pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
+    line_index_buffer: wgpu::Buffer,
     num_indices: u32,
+    num_line_indices: u32,
     is_surface_configured: bool,
     window: Arc<Window>,
 }
@@ -288,6 +298,46 @@ impl State {
             cache: None,
         });
 
+        // 线框使用独立的 pipeline：填充 pipeline 仍然绘制三角形，
+        // 线框 pipeline 则把每两个索引解释成一条线。
+        let line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Line Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Some(Vertex::desc())],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_line_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex buffer"),
             contents: bytemuck::cast_slice(VERTICES),
@@ -299,7 +349,13 @@ impl State {
             contents: bytemuck::cast_slice(INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
+        let line_index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Line Index Buffer"),
+            contents: bytemuck::cast_slice(LINE_INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
         let num_indices = INDICES.len() as u32;
+        let num_line_indices = LINE_INDICES.len() as u32;
 
         Ok(Self {
             surface,
@@ -307,9 +363,12 @@ impl State {
             queue,
             config,
             render_pipeline,
+            line_pipeline,
             vertex_buffer,
             index_buffer,
+            line_index_buffer,
             num_indices,
+            num_line_indices,
             is_surface_configured: false,
             window,
         })
@@ -475,6 +534,13 @@ impl State {
             //
             // 因此，这次调用的整体含义是：读取全部索引、不添加顶点偏移，并绘制一个实例。
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+
+            // 在填充三角形之上绘制外轮廓和内部三角形边线。
+            render_pass.set_pipeline(&self.line_pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass
+                .set_index_buffer(self.line_index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.num_line_indices, 0, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

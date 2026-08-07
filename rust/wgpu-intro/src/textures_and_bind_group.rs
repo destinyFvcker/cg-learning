@@ -1,10 +1,18 @@
 //! 纹理是覆盖在三角形网格上的图像，用于使其看起来更具细节。纹理有很多种类型，就像是法线贴图、凹凸贴图、
 //! 高光贴图和漫反射贴图。这里讨论的就是漫反射贴图，或者更简单地说，就是颜色纹理。
 
+#![allow(unused)]
+
 use std::sync::Arc;
 
-use wgpu::VertexBufferLayout;
-use winit::window::Window;
+use wgpu::{VertexBufferLayout, util::DeviceExt};
+use winit::{
+    application::ApplicationHandler,
+    event::{KeyEvent, WindowEvent},
+    event_loop::ActiveEventLoop,
+    keyboard::PhysicalKey,
+    window::Window,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -186,7 +194,304 @@ impl State {
                 bind_group_layouts: &[],
                 immediate_size: 0,
             });
+        // 可以把渲染管线想象成一个函数：
+        // render_pipeline(
+        //     bind_group_0,
+        //     bind_group_1,
+        //     ...,
+        //     immediate_data
+        // )
+        //
+        // bind_group_layouts: &[]：Shader 不接收任何绑定组资源，比如纹理、采样器、Uniform Buffer、Storage Buffer
+        // immediate_size: 0：Shader 不接收 immediate data，也就是类似 Vulkan push constants 的少量快速参数
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Render Pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Some(Vertex::desc())],
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
 
-        todo!()
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let num_indices = INDICES.len() as u32;
+
+        Ok(Self {
+            surface,
+            device,
+            queue,
+            config,
+            render_pipeline,
+            vertex_buffer,
+            index_buffer,
+            num_indices,
+            is_surface_configured: false,
+            window,
+        })
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width > 0 && height > 0 {
+            self.config.width = width;
+            self.config.height = height;
+            self.surface.configure(&self.device, &self.config);
+            self.is_surface_configured = true
+        }
+    }
+
+    fn handle_key(
+        &self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        code: winit::keyboard::KeyCode,
+        is_pressed: bool,
+    ) {
+        match (code, is_pressed) {
+            (winit::keyboard::KeyCode::Escape, true) => event_loop.exit(),
+            _ => {}
+        }
+    }
+
+    fn render(&mut self) -> anyhow::Result<()> {
+        self.window.request_redraw();
+
+        if !self.is_surface_configured {
+            return Ok(());
+        }
+
+        let output = match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(surface_texture) => surface_texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(surface_texture) => surface_texture,
+            wgpu::CurrentSurfaceTexture::Timeout
+            | wgpu::CurrentSurfaceTexture::Occluded
+            | wgpu::CurrentSurfaceTexture::Validation => return Ok(()),
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                self.surface.configure(&self.device, &self.config);
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Lost => anyhow::bail!("Lost device"),
+        };
+
+        let view = output
+            .texture
+            .create_view(&wgpu::wgt::TextureViewDescriptor::default());
+
+        let mut encoder =
+            self.device
+                .create_command_encoder(&wgpu::wgt::CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        self.queue.present(output);
+
+        Ok(())
+    }
+}
+
+pub struct App {
+    #[cfg(target_arch = "wasm32")]
+    proxy: Option<winit::event_loop::EventLoopProxy<State>>,
+    // 这里之所以使用Option，是应为State::new需要窗口，但是应用程序必须进入Resumed状态之后才能创建窗口
+    // 补充：也不完全是，因为State的计算过程是异步的，这里一开始就是要填成Option
+    state: Option<State>,
+}
+
+impl App {
+    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: &EventLoop<State>) -> Self {
+        Self {
+            #[cfg(target_arch = "wasm32")]
+            proxy: Some(event_loop.create_proxy()),
+            state: None,
+        }
+    }
+}
+
+impl ApplicationHandler<State> for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        #[allow(unused_mut)]
+        let mut window_attributes = Window::default_attributes();
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            use winit::platform::web::WindowAttributesExtWebSys;
+
+            const CANVAS_ID: &str = "canvas";
+
+            let window = wgpu::web_sys::window().unwrap_throw();
+            let document = window.document().unwrap_throw();
+            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
+            let html_canvas_element = canvas.unchecked_into();
+            window_attributes = window_attributes.with_canvas(Some(html_canvas_element));
+        }
+
+        let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut state = pollster::block_on(State::new(window)).unwrap();
+            let size = state.window.inner_size();
+            state.resize(size.width, size.height);
+            state.window.request_redraw();
+            self.state = Some(state);
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(proxy) = self.proxy.take() {
+                wasm_bindgen_futures::spawn_local(async move {
+                    assert!(
+                        proxy
+                            .send_event(
+                                State::new(window)
+                                    .await
+                                    .expect("Unable to create canvas!!!")
+                            )
+                            .is_ok()
+                    )
+                });
+            }
+        }
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        let state = match &mut self.state {
+            Some(canvas) => canvas,
+            None => return,
+        };
+
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::RedrawRequested => {
+                // state.update();
+                match state.render() {
+                    Ok(_) => {}
+                    Err(err) => {
+                        tracing::error!(?err);
+                        event_loop.exit();
+                    }
+                }
+            }
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(code),
+                        state: key_state,
+                        ..
+                    },
+                ..
+            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            _ => {}
+        }
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
+        let size = event.window.inner_size();
+        event.resize(size.width, size.height);
+        event.window.request_redraw();
+        self.state = Some(event);
+    }
+}
+
+// 原生 bin 和浏览器都调用同一个入口；平台差异只保留在 run 函数内部。
+// WASM 下 wasm-bindgen 会在 JavaScript 完成模块初始化后自动调用它。
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
+pub fn run() {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use winit::event_loop::EventLoop;
+
+        env_logger::init();
+
+        let event_loop = EventLoop::with_user_event()
+            .build()
+            .expect("failed to create event loop");
+        let mut app = App::new();
+        event_loop
+            .run_app(&mut app)
+            .expect("failed to run application");
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_error_panic_hook::set_once();
+        console_log::init_with_level(log::Level::Info).unwrap_throw();
+
+        let event_loop = EventLoop::with_user_event().build().unwrap_throw();
+        let app = App::new(&event_loop);
+        event_loop.spawn_app(app);
     }
 }

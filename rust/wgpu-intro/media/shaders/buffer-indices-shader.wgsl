@@ -40,10 +40,17 @@ Fragment shader
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color, 1.0);
 }
+
 最后加上 Alpha 1.0，写入第 0 个颜色附件，也就是 Rust 端 targets[0] 对应的 Surface 纹理。
 */ 
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color, 1.0);
+}
+
+// 线框叠加层使用固定的深色，避免和粉色填充混在一起。
+@fragment
+fn fs_line_main(_in: VertexOutput) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.03, 0.03, 0.03, 1.0);
 }
