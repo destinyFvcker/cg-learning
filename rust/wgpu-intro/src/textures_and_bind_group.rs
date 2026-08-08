@@ -19,7 +19,7 @@
 
 #![allow(unused)]
 
-use std::sync::Arc;
+use std::{os::macos::raw::stat, sync::Arc};
 
 use wgpu::{VertexBufferLayout, util::DeviceExt};
 use winit::{
@@ -29,6 +29,8 @@ use winit::{
     keyboard::PhysicalKey,
     window::Window,
 };
+
+use crate::abstracts::texture;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -50,27 +52,27 @@ impl Vertex {
     }
 }
 
-// Changed
 const VERTICES: &[Vertex] = &[
+    // Changed
     Vertex {
         position: [-0.0868241, 0.49240386, 0.0],
-        tex_coords: [0.4131759, 0.99240386],
+        tex_coords: [0.4131759, 0.00759614],
     }, // A
     Vertex {
         position: [-0.49513406, 0.06958647, 0.0],
-        tex_coords: [0.0048659444, 0.56958647],
+        tex_coords: [0.0048659444, 0.43041354],
     }, // B
     Vertex {
         position: [-0.21918549, -0.44939706, 0.0],
-        tex_coords: [0.28081453, 0.05060294],
+        tex_coords: [0.28081453, 0.949397],
     }, // C
     Vertex {
         position: [0.35966998, -0.3473291, 0.0],
-        tex_coords: [0.85967, 0.1526709],
+        tex_coords: [0.85967, 0.84732914],
     }, // D
     Vertex {
         position: [0.44147372, 0.2347359, 0.0],
-        tex_coords: [0.9414737, 0.7347359],
+        tex_coords: [0.9414737, 0.2652641],
     }, // E
 ];
 
@@ -204,6 +206,10 @@ impl State {
 
         // 这里的diffuse通常代表“漫反射纹理”，常见于图形学或者游戏材质系统
         let diffuse_bytes = include_bytes!("../media/image/happy-tree.png");
+
+        // let diffuse_bytes = include_bytes!("happy-tree.png"); // CHANGED!
+        // let diffuse_texture = texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "happy-tree.png").unwrap(); // CHANGED!
+
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
         let diffuse_rgba = diffuse_image.to_rgba8();
 
@@ -233,6 +239,8 @@ impl State {
             dimension: wgpu::TextureDimension::D2,
             // 纹理之中每个像素的数据格式，Rgba8UnormSrgb表示每个像素有RGBA四个通道，然后每个通道8
             // 位；RGB按照sRGB颜色空间处理，Alpha通道通常按照线性值处理
+            //
+            // Unorm是Unsigned Normalized的缩写，中文通常叫做无符号归一化整数
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             // 纹理的用途，可以使用`|`组合成多个用途，这里包含两个用途：
             // 1. TEXTURE_BINDING表示可以创建纹理视图并绑定到对应的着色器
