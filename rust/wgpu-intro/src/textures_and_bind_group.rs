@@ -1,5 +1,21 @@
 //! 纹理是覆盖在三角形网格上的图像，用于使其看起来更具细节。纹理有很多种类型，就像是法线贴图、凹凸贴图、
-//! 高光贴图和漫反射贴图。这里讨论的就是漫反射贴图，或者更简单地说，就是颜色纹理。
+//! 高光贴图和漫反射贴图。这里讨论的就是漫反射贴图，或者更简单地说，就是颜色纹理
+//!
+//! BindGroupLayout
+//!     描述一个绑定组内部有哪些资源，以及它们位于哪个 binding
+//!
+//! PipelineLayout
+//!     描述整个渲染管线会使用哪些 BindGroupLayout
+//!
+//! VertexBufferLayout
+//!     描述顶点缓冲区中顶点数据的排列方式
+//!
+//! PipelineLayout
+//! ├── BindGroupLayout（group 0）
+//! │   ├── binding 0: texture
+//! │   └── binding 1: sampler
+//! └── BindGroupLayout（group 1）
+//!     └── binding 0: uniform buffer
 
 #![allow(unused)]
 
@@ -18,12 +34,12 @@ use winit::{
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 3],
-    color: [f32; 3],
+    tex_coords: [f32; 2],
 }
 
 impl Vertex {
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1=> Float32x3];
+        wgpu::vertex_attr_array![0 => Float32x3, 1=> Float32x2];
 
     fn desc() -> VertexBufferLayout<'static> {
         wgpu::VertexBufferLayout {
@@ -34,26 +50,27 @@ impl Vertex {
     }
 }
 
+// Changed
 const VERTICES: &[Vertex] = &[
     Vertex {
         position: [-0.0868241, 0.49240386, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.4131759, 0.99240386],
     }, // A
     Vertex {
         position: [-0.49513406, 0.06958647, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.0048659444, 0.56958647],
     }, // B
     Vertex {
         position: [-0.21918549, -0.44939706, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.28081453, 0.05060294],
     }, // C
     Vertex {
         position: [0.35966998, -0.3473291, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.85967, 0.1526709],
     }, // D
     Vertex {
         position: [0.44147372, 0.2347359, 0.0],
-        color: [0.5, 0.0, 0.5],
+        tex_coords: [0.9414737, 0.7347359],
     }, // E
 ];
 
@@ -70,6 +87,7 @@ pub struct State {
     num_indices: u32,
     is_surface_configured: bool,
     window: Arc<Window>,
+    diffuse_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -184,14 +202,178 @@ impl State {
             view_formats: vec![],
         };
 
+        // 这里的diffuse通常代表“漫反射纹理”，常见于图形学或者游戏材质系统
+        let diffuse_bytes = include_bytes!("../media/image/happy-tree.png");
+        let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
+        let diffuse_rgba = diffuse_image.to_rgba8();
+
+        use image::GenericImageView;
+        // 读取图片尺寸，返回 width 以及 height
+        let dimensions = diffuse_image.dimensions();
+
+        let texture_size = wgpu::Extent3d {
+            width: dimensions.0,
+            height: dimensions.1,
+            // 所有Texture都作为3D来进行保存，通过将depth_or_array_layers设置为1
+            // 来表示2D的Texture
+            depth_or_array_layers: 1,
+        };
+
+        let diffuse_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("diffuse_texture"),
+            // 纹理尺寸，类型通常是 wgpu::Extent3d, 其中width是宽度，height是高度
+            // depth_or_array_layers是深度或者数组层数
+            size: texture_size,
+            // Mipmap层级数量，这里1表示只有原始尺寸的一层，不生成mipmap，如果使用mipmap
+            // 则需要创建多层并准备相应数据
+            mip_level_count: 1,
+            // 每个纹理像素的采样数，1表示普通纹理，不使用多重采样MSAA，常规图片纹理一般使用1
+            sample_count: 1,
+            // 纹理维度，D2表示二维纹理，对应着色器之中的texture_2d，其它选项还有D1和D3
+            dimension: wgpu::TextureDimension::D2,
+            // 纹理之中每个像素的数据格式，Rgba8UnormSrgb表示每个像素有RGBA四个通道，然后每个通道8
+            // 位；RGB按照sRGB颜色空间处理，Alpha通道通常按照线性值处理
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            // 纹理的用途，可以使用`|`组合成多个用途，这里包含两个用途：
+            // 1. TEXTURE_BINDING表示可以创建纹理视图并绑定到对应的着色器
+            // 2. COPY_DST表示可以通过queue.write_texture或者复制命令将数据写入纹理
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            // 允许纹理视图使用的额外格式，这和我们在创建SurfaceConfiguration的时候表示的内容指定的
+            // 配置是相同的，它指定了可以使用哪些纹理格式来为此纹理创建TextureView，在这里纹理的基础
+            // 格式（本例之中是Rgba8UnormSrgb）始终是支持的。
+            //
+            // 但是在WebGL2后端之中不支持使用不同的纹理格式
+            view_formats: &[],
+        });
+
+        // Texture结构体没有直接操作数据的方法，但是可以使用之前创建的queue上面的write_texture
+        // 方法来加载纹理
+        queue.write_texture(
+            // 告诉wgpu将纹理的rgba数据拷贝到这个地方
+            wgpu::TexelCopyTextureInfo {
+                texture: &diffuse_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            // texture的原始数据
+            diffuse_rgba.as_raw(),
+            // texture的具体布局格式
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * dimensions.0),
+                rows_per_image: Some(dimensions.1),
+            },
+            texture_size,
+        );
+
+        // 既然我们的纹理之中已经有了数据，那我们就需要一种使用它的方法。这就是TextireView和Sampler发挥
+        // 作用的地方
+        // TextireView为我们提供了观察纹理的视图。Sampler则控制Texture的采样方式
+        // 采样的工作原理类似于吸管工具，我们的程序提供纹理上的一个坐标，然后采样器根据纹理和一些内部参数
+        // 返回相应的颜色
+
+        let diffuse_texture_view =
+            diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let diffuse_sampler = device.create_sampler(&wgpu::wgt::SamplerDescriptor {
+            // address_mode参数决定了当采样器获取到纹理范围之外的纹理坐标的时候应该如何处理
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            // mag_filter和min_filter表示的都是当纹理映射到屏幕的时候，应该如何从纹理之中获取颜色
+            // 特别指当采样足迹小于或者大于一个纹素（texel）的时候应该如何处理
+            //
+            // 现在这里确定几个概念：
+            // - 纹素（texel）:也就是纹理之中的一个像素
+            // - 屏幕像素（pixel）:最终显示图像之中的一个像素
+            // - 采样足迹（sample footprint）:也就是一个屏幕像素对应到纹理之中的区域大小
+            //
+            // 例如，一个 100×100 的纹理贴到屏幕上的 500×500 区域中，每个屏幕像素只对应纹
+            // 理的一小部分，这叫放大；反过来，把它缩小到 20×20 区域，则一个屏幕像素可能对应多个纹素，
+            // 这叫缩小
+            //
+            // 有两种选择：
+            // - Linear: 在每个维度之中选择两个纹素，并返回其值之间的线性差值
+            // - Nearest: 返回最靠近纹理坐标的纹素值。这会使图像在远处看起来更清晰，
+            // 但在近处会呈现像素化。然而，如果你的纹理本身就是像素风格的设计，比如
+            // 像素艺术游戏或像《我的世界》这样的体素游戏，这种效果可能正是你想要的
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+
+        // 有了上面的这些资源当然很好了，但是如果我们没有办法将它们接入任何地方，它们就没多大用处
+        // 这就是BindGroup以及PipelineLayout发挥作用的地方
+
+        // BindGroup 描述了一组资源以及着色器如何访问这些资源。我们使用 BindGroupLayout 来创建一个 BindGroup
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("texture bind group layout"),
+                // 这里包含两个条目，一个是位于绑定点0的采样纹理，一个是位于绑定点1的采样器
+                // 这两者通常要配套使用：纹理提供"图像数据"，采样器决定"如何读取这些数据"
+                //
+                // 就像是FRAGMENT指定的，这两个绑定仅对片元着色器可见，虽然说这个值也可以指定
+                // 成大部分其它的着色器阶段，但是大部分情况下就仅使用FRAGMENT.
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        // 这些个binding数字都必须和WGSL之中的@binding(0)对应
+                        binding: 0,
+                        // 表示这个资源允许被哪些着色器阶段访问
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        // 表示这个绑定槽位存放的是纹理视图
+                        ty: wgpu::BindingType::Texture {
+                            // 表示从纹理之中读取出来的数据是浮点类型，以及允许使用过滤采样器，也就是
+                            // 下面这个绑定项对应的Sampler
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            // 表示绑定的是2D纹理，通常用于：普通图片、精灵图、UI图片、2D游戏纹理、
+                            // 以及材质贴图
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            // 表示这不是多重采样纹理，就是一个普通的单采样二维纹理
+                            multisampled: false,
+                        },
+                        // 表示这个绑定槽就只绑定一个资源，而不是资源数组
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        // 表示这里放的一个采样器而不是纹理，而且这里放的是一个支持过滤的采样器
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        // 也表示这里只绑定一个采样器
+                        count: None,
+                    },
+                ],
+            });
+
+        // 有了BindGroupLayout，此时我们就可以开始创建BindGroup了
+        //
+        // BindGroup 是对 BindGroupLayout 更具体的声明。之所以将它们分开，是因为这允许我们在运行中
+        // 快速切换 BindGroup ，只要它们都共享相同的 BindGroupLayout
+        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("diffuse_bind_group"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
+                },
+            ],
+        });
+
         let shader = device.create_shader_module(wgpu::include_wgsl!(
-            "../media/shaders/buffer-indices-shader.wgsl"
+            "../media/shaders/bind-group-shader.wgsl"
         ));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[Some(&texture_bind_group_layout)],
                 immediate_size: 0,
             });
         // 可以把渲染管线想象成一个函数：
@@ -266,6 +448,7 @@ impl State {
             num_indices,
             is_surface_configured: false,
             window,
+            diffuse_bind_group,
         })
     }
 
@@ -344,6 +527,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
