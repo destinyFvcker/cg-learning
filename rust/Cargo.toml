@@ -6,6 +6,7 @@ members = ["opengl-programming-guide", "utils", "wgpu-intro"]
 [workspace.dependencies]
 anyhow = "1.0"
 bytemuck = { version = "1.25.2", features = ["derive"] }
+cgmath = "0.18"
 env_logger = "0.11.11"
 glutin = "0.32.3"
 # image包含的jpeg解码器使用rayon通过线程加速解码。但是WASM目前并不支持线程，因此在这里禁用
