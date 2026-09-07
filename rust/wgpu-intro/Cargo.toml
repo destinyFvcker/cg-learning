@@ -15,6 +15,7 @@ path = "src/bin/the_surface.rs"
 [dependencies]
 anyhow = { workspace = true }
 bytemuck = { workspace = true }
+cgmath.workspace = true
 env_logger = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
@@ -47,3 +48,4 @@ the-pipeline = []
 the-surface = []
 the-window = []
 the-window-ch = []
+uniform-buffers-and-3d-camera = []

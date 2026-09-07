@@ -13,5 +13,7 @@ pub mod the_surface;
 pub mod the_window;
 #[cfg(any(not(target_arch = "wasm32"), feature = "the-window-ch"))]
 pub mod the_window_ch;
+#[cfg(any(not(target_arch = "wasm32"), feature = "uniform-buffers-and-3d-camera"))]
+pub mod uniform_buffers_and_3d_camera;
 
 pub mod abstracts;
