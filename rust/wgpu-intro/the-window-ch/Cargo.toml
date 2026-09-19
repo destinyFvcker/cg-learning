@@ -1,0 +1,14 @@
+[package]
+name = "the-window-ch"
+version = "0.1.0"
+edition = "2024"
+
+# 告诉cargo允许项目构建一个本地的Rust静态库和一个C/C++兼容库。需要rlib在桌面环境之中运行wgpu，并需要cdylib来构建在
+# 浏览器之中运行的WASM
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+parking_lot = { workspace = true }
+pollster = { workspace = true }
+winit = { workspace = true }

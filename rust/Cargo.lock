@@ -236,6 +236,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "buffers-and-indices"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -802,6 +820,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "instancing"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "cgmath",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "image",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1127,6 +1165,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "new-to-index-buffer"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -2020,6 +2076,83 @@ dependencies = [
 ]
 
 [[package]]
+name = "textures-and-bind-group"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "image",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "the-pipeline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "the-surface"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "the-window"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "console_log",
+ "env_logger",
+ "log",
+ "pollster",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "the-window-ch"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "pollster",
+ "winit",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2220,6 +2353,26 @@ name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4ac048d71ede7ee76d585517add45da530660ef4390e49b098733c6e897f254"
+
+[[package]]
+name = "uniform-buffers-and-3d-camera"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "cgmath",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "image",
+ "log",
+ "pollster",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wgpu",
+ "winit",
+]
 
 [[package]]
 name = "utf8parse"
@@ -2608,28 +2761,6 @@ dependencies = [
  "windows",
  "windows-core",
  "windows-result",
-]
-
-[[package]]
-name = "wgpu-intro"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "cgmath",
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "image",
- "log",
- "parking_lot",
- "pollster",
- "tracing",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "wgpu",
- "winit",
 ]
 
 [[package]]

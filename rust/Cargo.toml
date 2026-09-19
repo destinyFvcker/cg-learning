@@ -1,12 +1,14 @@
 [workspace]
 # 从0.10版本开始，wgpu就需要使用Cargo最新的功能解析器，这是2021版本（或者任何使用Rust 1.56.0或更新版本创建的新项目）的默认配置。
 resolver = "3"
-members = ["opengl-programming-guide", "utils", "wgpu-intro"]
+members = ["opengl-programming-guide", "utils", "wgpu-intro/*"]
 
 [workspace.dependencies]
 anyhow = "1.0"
 bytemuck = { version = "1.25.2", features = ["derive"] }
 cgmath = "0.18"
+console_error_panic_hook = "0.1.6"
+console_log = "1.0"
 env_logger = "0.11.11"
 glutin = "0.32.3"
 # image包含的jpeg解码器使用rayon通过线程加速解码。但是WASM目前并不支持线程，因此在这里禁用
@@ -28,5 +30,8 @@ tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"
 tracing-web = "0.1.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4.30"
+web-sys = { version = "0.3", features = ["Document", "Element", "Window"] }
 wgpu = "30.0.0"
 winit = { version = "0.30", features = ["android-native-activity"] }
