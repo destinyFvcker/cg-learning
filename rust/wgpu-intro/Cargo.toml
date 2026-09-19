@@ -42,6 +42,7 @@ wgpu = { workspace = true, features = ["webgl"] }
 # WASM 构建时通过 `--no-default-features --features <feature>` 明确选择唯一入口。
 default = []
 buffers-and-indices = []
+instancing = []
 new-to-index-buffer = []
 textures-and-bind-group = []
 the-pipeline = []
