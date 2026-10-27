@@ -7,7 +7,8 @@ struct VertexOutput {
     @location(0) uv: vec2f,
 };
 
-@group(0) @binding(0) var<uniform> uni: Uniforms;
+@group(0) @binding(0)
+var<uniform> uni: Uniforms;
 
 const trianglePos = array<vec2f, 3>(
     vec2f(0.0, 0.6),
