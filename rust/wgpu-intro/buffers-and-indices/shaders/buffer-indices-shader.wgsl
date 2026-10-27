@@ -1,6 +1,6 @@
 struct VertexInput {
     @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>
+    @location(1) color: vec3<f32>,
 }
 
 struct VertexOutput {
@@ -9,16 +9,14 @@ struct VertexOutput {
 }
 
 @vertex
-fn vs_main(
-    model: VertexInput,
-) -> VertexOutput {
+fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.color = model.color;
     out.clip_position = vec4<f32>(model.position, 1.0);
     return out;
 }
 
-/* 
+/*
 Fragment shader
 
 为什么三角形中间会产生渐变
@@ -42,7 +40,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 最后加上 Alpha 1.0，写入第 0 个颜色附件，也就是 Rust 端 targets[0] 对应的 Surface 纹理。
-*/ 
+*/
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {

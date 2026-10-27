@@ -196,9 +196,8 @@ impl State {
             view_formats: vec![],
         };
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!(
-            "../media/shaders/buffer-indices-shader.wgsl"
-        ));
+        let shader = device
+            .create_shader_module(wgpu::include_wgsl!("../shaders/buffer-indices-shader.wgsl"));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

@@ -108,9 +108,7 @@ impl State {
         // let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("../media/shaders/shader.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/shader.wgsl").into()),
         });
 
         // 渲染管线布局描述的是：Shader可以从CPU/GPU外部接收哪些资源和立即数据

@@ -203,7 +203,7 @@ impl State {
         };
 
         // 这里的diffuse通常代表“漫反射纹理”，常见于图形学或者游戏材质系统
-        let diffuse_bytes = include_bytes!("../media/image/happy-tree.png");
+        let diffuse_bytes = include_bytes!("../assets/happy-tree.png");
 
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
         let diffuse_rgba = diffuse_image.to_rgba8();
@@ -369,9 +369,8 @@ impl State {
             ],
         });
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!(
-            "../media/shaders/bind-group-shader.wgsl"
-        ));
+        let shader =
+            device.create_shader_module(wgpu::include_wgsl!("../shaders/bind-group-shader.wgsl"));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

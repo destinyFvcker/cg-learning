@@ -323,7 +323,7 @@ impl State {
             view_formats: vec![],
         };
 
-        let diffuse_bytes = include_bytes!("../media/image/happy-tree.png");
+        let diffuse_bytes = include_bytes!("../assets/happy-tree.png");
 
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
         let diffuse_rgba = diffuse_image.to_rgba8();
@@ -420,8 +420,7 @@ impl State {
             ],
         });
 
-        let shader =
-            device.create_shader_module(wgpu::include_wgsl!("../media/shaders/instancing.wgsl"));
+        let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/instancing.wgsl"));
 
         // cgmath默认遵循OpenGL风格的右手坐标系：x向右、y向上、z朝向屏幕之外（指向观察者）
         // 所以项目要看到场景，就要站在+z方向，朝-z方向看
